@@ -1,0 +1,191 @@
+---
+title: "PML - Quality of Weightlifting Analysis"
+author: "Sahil"
+date: "4/11/2021"
+output: html_document
+---
+
+
+## OVERVIEW:
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of this project is to predict the manner in which they did the exercise. This is the `classe` variable in the training set.
+
+## Data set description
+
+The outcome variable is `classe`, a factor variable with 5 levels. For this data set, participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions:
+
+- Class A: Exactly according to the specification
+- Class B: Throwing the elbows to the front 
+- Class C: Lifting the dumbbell only halfway
+- Class D: Lowering the dumbbell only halfway
+- Class E: Throwing the hips to the front
+
+## Loading the Data and Required Packages
+
+The initial configuration consists of loading some required packages and initializing some variables.
+
+```{r configuration, echo=TRUE, results='hide'}
+#Data Files
+training.url    <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+test.cases.url  <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+
+
+
+#Directories
+if (!file.exists("data")){
+  dir.create("data")
+}
+if (!file.exists("data/submission")){
+  dir.create("data/submission")
+}
+
+
+#R-Packages
+InstallRpart<- require("rpart")
+if(!InstallRpart){
+    install.packages("rpart")
+    library("rpart")
+    }
+InstallRpartPlot <- require("rpart.plot")
+if(!InstallRpartPlot){
+    install.packages("rpart.plot")
+    library("rpart.plot")
+    }
+InstallCaret <- require("caret")
+if(!InstallCaret){
+    install.packages("caret")
+    library("caret")
+    }
+InstallRF <- require("randomForest")
+if(!InstallRF){
+    install.packages("randomForest")
+    library("randomForest")
+    }
+Installggplot2 <- require("ggplot2")
+if(!Installggplot2){
+    install.packages("ggplot2")
+    library("ggplot2")
+}
+
+InstallLattice <- require("lattice")
+if(!InstallLattice){
+    install.packages("lattice")
+    library("lattice")
+}
+
+# Set seed for reproducability
+set.seed(1234)
+```
+
+### Download & Clean Data:
+
+``` {r download and clean data}
+
+#download
+training.file   <- './data/pml-training.csv'
+test.cases.file <- './data/pml-testing.csv'
+download.file(training.url, training.file)
+download.file(test.cases.url,test.cases.file )
+
+#clean
+training <-read.csv(training.file, na.strings=c("NA","#DIV/0!", ""))
+testing <-read.csv(test.cases.file , na.strings=c("NA", "#DIV/0!", ""))
+clean_training_set<-training[,colSums(is.na(training)) == 0]
+clean_testing_set <-testing[,colSums(is.na(testing)) == 0]
+
+# Remove unnecessary columns (first 7 cols)
+clean_training_set<-clean_training_set[,-c(1:7)]
+clean_testing_set  <-clean_testing_set [,-c(1:7)]
+
+```
+
+## Brief Exploratory Analysis of Training Data set
+
+``` {r expl training}
+str(clean_training_set)
+
+colSums(is.na(clean_training_set))
+
+# as.factor(clean_training_set$classe)
+
+ggplot(clean_training_set, aes(x=factor(classe)))+
+  geom_bar(stat="count", width=0.7, fill="steelblue")+
+  theme_minimal()
+```
+The training data set has a total of 19622 obs.of 53 variables. We have also verified that there are no missing/NA/DIV0 values in the set
+
+The plot indicates that class A (Proper repetitions) are the most frequent outcome in the data set. The least frequent outcome is D.
+
+
+## Cross-validation
+We will use cross-validation by splitting the cleaned training data into a (sub)training (75%) and (sub)testing (25%) data sets.
+
+```{r datasplit, echo=TRUE, results='hide'}
+subSamples <- createDataPartition(y=clean_training_set$classe, p=0.75, list=FALSE)
+subTraining <- clean_training_set[subSamples, ] 
+subTesting <- clean_training_set[-subSamples, ]
+
+```
+
+## Applying models and prediction
+
+Here we will apply two different models and compare the outcome of predictions - 
+1. Decision Tree 
+2. Random Forests
+
+### Decision tree
+```{r decisiontree, echo=TRUE}
+# Fit model
+decisionTreeMod <- train(classe ~., method='rpart', data=subTraining)
+# Perform prediction
+predictDT <- predict(decisionTreeMod, subTesting)
+# Plot result
+rpart.plot(decisionTreeMod$finalModel)
+
+```
+### RESULTS: DECISION TREE
+Following confusion matrix shows the errors of the Decision tree prediction algorithm.
+
+```{r decisiontreecm, echo=TRUE}
+subTest.factor <- as.factor(subTesting$classe)
+confusionMatrix(subTest.factor, predictDT)
+```
+
+The overall accuracy of prediction on the testing (portion of training set used for cross validation - not the main "PLM-Testing" data set) was very poor - 0.5. 
+
+Let us try results of another model such as Random Forests
+
+### Random Forests
+``` {r randomforest }
+
+# Fit model
+RandomForestMod <- train(classe ~., method='rf', data=subTraining, ntree = 64)
+# Perform prediction
+predictRF <- predict(RandomForestMod, subTesting)
+```
+``` {r evaluate conf matrix}
+#Evaluate
+confusionMatrix(subTest.factor, predictRF)
+
+```
+
+### RESULTS: RANDOM FORESTS
+
+The accuracy is dramatically improved - 0.99+ suggesting that this model is much better to predict the desired outcome from the vairables given. 
+
+### Out of Sample Error Rate
+
+The expected out-of-sample error is estimated at 0.0075, or 0.75%. The expected OoS error is calculated as 1 - accuracy for predictions made against the cross-validation set. 
+
+Our Test data set comprises 20 cases. With an accuracy above 99% on our cross-validation data, we can expect that very few, or none, of the test samples will be missclassified.
+
+# Conclusion
+
+We trained two different models - Decision Tree and Random Forests - on the given training data set (PML-Training) and utilized cross validation with a partition of p = 0.75. 
+
+The results of both models indicate that the accuracy Random Forest based prediction far exceeds that of Decision Tree, achieving 99%+ and 50% respectively. 
+
+
+
